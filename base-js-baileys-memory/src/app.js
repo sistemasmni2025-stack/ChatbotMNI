@@ -75,17 +75,23 @@ async function getTireInventoryFromAPI(medidas) {
     const wsdlUrl = 'https://sys.multillantasnieto.net/ExistenciasAPI/com.existencias.asp_chatbot?wsdl';
     try {
         const client = await soap.createClientAsync(wsdlUrl);
-        // Ajusta el nombre del método y parámetros según el WSDL
-        const args = { Medidas: medidas };
-        const [result] = await client.GetExistenciasAsync(args);
-        // Procesa el resultado para obtener la lista de llantas
-        if (result && result.Existencias && Array.isArray(result.Existencias)) {
-            return result.Existencias.map((item, idx) =>
-                `Opción: ${idx + 1}\nDescripción: ${item.Descripcion}\nPrecio: ${item.Precio}\nExistencia: ${item.Existencia}`
-            ).join('\n');
-        } else {
+        // Parámetros según WSDL
+        const args = {
+            Noper: 1, // Puedes ajustar según tu lógica
+            Txt: medidas, // Medida enviada por el usuario
+            Tipo: 1 // Puedes ajustar según tu lógica
+        };
+        // Llama al método Execute
+        const [result] = await client.ExecuteAsync(args);
+        // Procesa la respuesta
+        const items = result.Sdtexistencias?.SDTExistenciasItem || [];
+        if (items.length === 0) {
             return 'No se encontraron llantas para esas medidas.';
         }
+        // Formatea el inventario para mostrarlo en el bot
+        return items.map((item, idx) =>
+            `Opción: ${idx + 1}\nMarca: ${item.grumar}\nMedida: ${item.almancho}/${item.almserie}R${item.almrin}\nAlmacén: ${item.almnom}`
+        ).join('\n');
     } catch (error) {
         console.error('Error consultando la API:', error);
         return 'Hubo un error consultando el inventario. Intenta más tarde.';
@@ -96,7 +102,7 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
     .addAnswer('¡Bienvenid@ al Robot 🤖 de MultillantasNieto!', {
         media: welcomeNietoImage
     })
-    .addAnswer('¿Escribe una Opción?', {
+    .addAnswer('Escribe una opción', {
         buttons: [
             { body: 'Cotizar' },
             { body: 'Contactar asesor' }
@@ -105,13 +111,21 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
     .addAnswer(
         '🚗 Escribe las medidas de tu llanta en formato Ancho/Alto/Rin (ej: 185/60R15)\nO envía una foto donde se vean las medidas.\n👉 ¡Te cotizamos al instante!',
         { media: tireInfoNietoImage, capture: true },
-        async (ctx, { flowDynamic }) => {
-            if (/\d{3}\/\d{2}r\d{2}/i.test(ctx.body)) {
-                const medidas = ctx.body.trim();
+        async (ctx, { flowDynamic, gotoFlow }) => {
+            let seguirPreguntando = true;
+            let medidas = ctx.body.trim();
+            while (seguirPreguntando) {
                 const inventoryMsg = await getTireInventoryFromAPI(medidas);
-                await flowDynamic('🚗 Estas son las Marcas y Modelos de llantas que tenemos disponibles en nuestro inventario actual:\n' + inventoryMsg);
-                await flowDynamic('¿Encontraste la llanta que buscabas? 🕵️‍♂️\n\n✅ Realiza tu pedido al: 442 123 4567\n✅ Compra en nuestra tienda en línea: https://multillantasnieto.com/tienda\n✅ Visita nuestras sucursales: https://multillantasnieto.com/sucursales\nIncluye válvula, montaje, balanceo y nitrógeno (Aplican restricciones)');
-                await flowDynamic({ buttons: [ { body: 'Sí' }, { body: 'No' } ], body: '¿Quieres generar un PDF de la cotización anterior?' });
+                if (inventoryMsg.includes('No se encontraron llantas para esas medidas.')) {
+                    await flowDynamic('🚗 No se encontraron llantas para esas medidas. Por favor, ingresa otra medida en formato Ancho/Alto/Rin (ej: 185/60R15):');
+                    // Espera la siguiente respuesta del usuario
+                    return;
+                } else {
+                    await flowDynamic('🚗 Estas son las Marcas y Modelos de llantas que tenemos disponibles en nuestro inventario actual:\n' + inventoryMsg);
+                    await flowDynamic('¿Encontraste la llanta que buscabas? 🕵️‍♂️\n\n✅ Realiza tu pedido al: 442 123 4567\n✅ Compra en nuestra tienda en línea: https://multillantasnieto.com/tienda\n✅ Visita nuestras sucursales: https://multillantasnieto.com/sucursales\nIncluye válvula, montaje, balanceo y nitrógeno (Aplican restricciones)');
+                    await flowDynamic({ buttons: [ { body: 'Sí' }, { body: 'No' } ], body: '¿Quieres generar un PDF de la cotización anterior?' });
+                    seguirPreguntando = false;
+                }
             }
         }
     )
