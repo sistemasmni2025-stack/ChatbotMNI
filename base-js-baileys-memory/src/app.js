@@ -65,7 +65,7 @@ const welcomeFlow = addKeyword(['hola', 'hi', 'menu', 'inicio'])
             } else if (isMatch(body, MENU_OPTIONS.CONTACTAR_ASESOR, '3')) {
                 return fallBack('Un asesor se pondrá en contacto contigo pronto. (Funcionalidad en desarrollo)');
             } else {
-                return fallBack('Por favor, selecciona una opción válida (1, 2 o 3).');
+                return fallBack('Por favor, Selecciona una Opción Válida (1, 2 o 3).');
             }
         }
     )
@@ -171,7 +171,7 @@ const selectionFlow = addKeyword(['SELECTION_FLOW'])
     });
 
 const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
-    .addAnswer('¿Cómo deseas buscar tu llanta?\n\n1. Descripción (Michelin,uniroyal,etc)\n2. MSPN (3953)\n3. Medida (155 70 13)', {
+    .addAnswer('¿Cómo deseas buscar tu llanta?\n\n1. Descripción (Ej.Michelin,uniroyal,etc)\n2. MSPN (Ej.3953)\n3. Medida (Ej.155 70 13)', {
         buttons: [
             { body: 'Descripción' },
             { body: 'MSPN' },
