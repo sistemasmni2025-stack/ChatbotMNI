@@ -15,6 +15,9 @@ const MENU_OPTIONS = {
 
 const PORT = process.env.PORT ?? 3008
 
+const idleFlow = addKeyword(utils.setEvent('IDLE'))
+    .addAnswer('⏳ Se ha cerrado la sesión por inactividad. ¡Gracias por visitarnos! Si necesitas algo más, escribe "Hola".');
+
 /*const discordFlow = addKeyword('doc').addAnswer(
     ['You can see the documentation here', '📄 https://builderbot.app/docs \n', 'Do you want to continue? *yes*'].join(
         '\n'
@@ -105,15 +108,67 @@ async function getTireInventoryFromAPI(txt, tipo) {
         if (!Array.isArray(data) || data.length === 0) {
             return null;
         }
-        // Formatea el inventario para mostrarlo en el bot
-        return data.map((item, idx) =>
-            `Opción ${idx + 1}:\nClave: ${item.almcve}\nMarca: ${item.grumar}\nMedida: ${item.almancho} ${item.almserie} ${item.almrin}\nDescripción: ${item.almnom}`
-        ).join('\n\n');
+        // Retorna los datos crudos
+        return data;
     } catch (error) {
         console.error('Error consultando la API:', error);
         return null;
     }
 }
+
+const selectionFlow = addKeyword(['SELECTION_FLOW'])
+    .addAnswer('¿Deseas cotizar alguna de estas opciones? Responde con el *Número de opción* (ej: 1) o escribe *"No"* para buscar otra llanta.', { capture: true, idle: 120000 }, async (ctx, { state, gotoFlow, fallBack, flowDynamic }) => {
+        if (ctx?.idleFallBack) return gotoFlow(idleFlow);
+
+        const input = ctx.body.trim().toLowerCase();
+
+        if (input.includes('no')) {
+            return gotoFlow(nietoFlow);
+        }
+
+        const index = parseInt(input) - 1;
+        const results = state.get('searchResults');
+
+        if (isNaN(index) || index < 0 || index >= results.length) {
+            return fallBack('⚠️ Opción no válida. Por favor, escribe solo el número de la opción (ej: 1).');
+        }
+
+        const selectedTire = results[index];
+        await state.update({ selectedTire });
+
+        await flowDynamic([
+            'Has seleccionado:',
+            `🔹 Marca: ${selectedTire.grumar}`,
+            `🔹 Medida: ${selectedTire.almancho} ${selectedTire.almserie} ${selectedTire.almrin}`,
+            `🔹 Descripción: ${selectedTire.almnom}`,
+            '-----------------------------',
+            '¿Es correcta esta opción? (Sí/No)'
+        ].join('\n'));
+    })
+    .addAnswer('Confirmación', { capture: true, idle: 120000 }, async (ctx, { state, flowDynamic, gotoFlow, fallBack }) => {
+        if (ctx?.idleFallBack) return gotoFlow(idleFlow);
+
+        const input = ctx.body.trim().toLowerCase();
+        const normalize = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        if (input === 'si' || normalize(input) === 'si') {
+            const folio = `COT-${Date.now().toString().slice(-6)}`;
+            const selectedTire = state.get('selectedTire');
+
+            await flowDynamic([
+                `✅ *¡Solicitud de Cotización Recibida!*`,
+                `📄 Tu folio de seguimiento es: *${folio}*`,
+                `🔧 Llanta: ${selectedTire.grumar} ${selectedTire.almancho}/${selectedTire.almserie}R${selectedTire.almrin}`,
+                `🕒 Tu cotización ha sido puesta en lista de espera. Un asesor verificará la disponibilidad y te contactará en breve.`
+            ].join('\n'));
+
+            // Aquí se enviaría la notificación al asesor (pendiente de implementar)
+        } else if (input === 'no') {
+            return gotoFlow(selectionFlow); // Vuelve a preguntar si desea cotizar alguna opción
+        } else {
+            return fallBack('⚠️ Por favor, responde Sí o No.');
+        }
+    });
 
 const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
     .addAnswer('¿Cómo deseas buscar tu llanta?\n\n1. Descripción (Michelin,uniroyal,etc)\n2. MSPN (3953)\n3. Medida (155 70 13)', {
@@ -122,8 +177,11 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
             { body: 'MSPN' },
             { body: 'Medida' }
         ],
-        capture: true
-    }, async (ctx, { state, fallBack }) => {
+        capture: true,
+        idle: 120000
+    }, async (ctx, { state, fallBack, gotoFlow }) => {
+        if (ctx?.idleFallBack) return gotoFlow(idleFlow);
+
         const selection = ctx.body.trim().toLowerCase();
         const normalize = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -139,7 +197,9 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
 
         await state.update({ searchType: tipo });
     })
-    .addAnswer('✍️ Por favor, ingresa el dato de búsqueda:', { capture: true }, async (ctx, { flowDynamic, state, gotoFlow }) => {
+    .addAnswer('✍️ Por favor, ingresa el dato de búsqueda:', { capture: true, idle: 120000 }, async (ctx, { flowDynamic, state, gotoFlow }) => {
+        if (ctx?.idleFallBack) return gotoFlow(idleFlow);
+
         const query = ctx.body.trim();
         const tipo = state.get('searchType');
 
@@ -151,25 +211,17 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
             return gotoFlow(nietoFlow);
         }
 
-        await flowDynamic('🚗 *Resultados de la búsqueda:*');
-        await flowDynamic(results);
         await state.update({ searchResults: results });
-    })
-    .addAnswer('¿Deseas cotizar alguna de estas opciones?', {
-        buttons: [
-            { body: 'Sí, cotizar' },
-            { body: 'No, buscar otra' }
-        ],
-        capture: true
-    }, async (ctx, { flowDynamic, gotoFlow }) => {
-        if (ctx.body.includes('Sí') || ctx.body.includes('Si')) {
-            const folio = `COT-${Date.now().toString().slice(-6)}`;
-            await flowDynamic(`✅ *¡Solicitud de Cotización Recibida!*`);
-            await flowDynamic(`📄 Tu folio de seguimiento es: *${folio}*`);
-            await flowDynamic(`🕒 Tu cotización ha sido puesta en lista de espera. Un asesor verificará la disponibilidad y te contactará en breve.`);
-        } else {
-            return gotoFlow(nietoFlow);
-        }
+
+        // Formatear resultados para mostrar
+        const resultsText = results.map((item, idx) =>
+            `Opción ${idx + 1}:\nClave: ${item.almcve}\nMarca: ${item.grumar}\nMedida: ${item.almancho} ${item.almserie} ${item.almrin}\nDescripción: ${item.almnom}`
+        ).join('\n\n');
+
+        await flowDynamic('🚗 *Resultados de la búsqueda:*');
+        await flowDynamic(resultsText);
+
+        return gotoFlow(selectionFlow);
     })
 
 // --- FLUJO SEGUIMIENTO DE COTIZACIÓN ---
@@ -198,7 +250,7 @@ const seguimientoFlow = addKeyword(['seguimiento', '2'])
     );
 
 const main = async () => {
-    const adapterFlow = createFlow([welcomeFlow, registerFlow, fullSamplesFlow, nietoFlow, seguimientoFlow])
+    const adapterFlow = createFlow([welcomeFlow, fullSamplesFlow, nietoFlow, selectionFlow, seguimientoFlow, idleFlow])
 
     const adapterProvider = createProvider(Provider,
         { version: [2, 3000, 1027934701] }
