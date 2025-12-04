@@ -4,9 +4,18 @@ import { MemoryDB as Database } from '@builderbot/bot'
 import { BaileysProvider as Provider } from '@builderbot/provider-baileys'
 import soap from 'soap';
 
+const welcomeNietoImage = join(process.cwd(), 'assets', 'nieto_welcome.jpg');
+const tireInfoNietoImage = join(process.cwd(), 'assets', 'nieto_tireinfo.png');
+
+const MENU_OPTIONS = {
+    COTIZAR_LLANTA: '🛞 Cotizar Llanta(s)',
+    SEGUIMIENTO_COTIZACION: '👨‍💻 Seguimiento de Cotización',
+    CONTACTAR_ASESOR: '📋 Contactar Asesor'
+};
+
 const PORT = process.env.PORT ?? 3008
 
-const discordFlow = addKeyword('doc').addAnswer(
+/*const discordFlow = addKeyword('doc').addAnswer(
     ['You can see the documentation here', '📄 https://builderbot.app/docs \n', 'Do you want to continue? *yes*'].join(
         '\n'
     ),
@@ -18,34 +27,47 @@ const discordFlow = addKeyword('doc').addAnswer(
         await flowDynamic('Thanks!')
         return
     }
-)
+)*/
 
-const welcomeFlow = addKeyword(['hola'])
-    .addAnswer('¡Bienvenid@ al Robot 🤖 de MultillantasNieto!', {
+const welcomeFlow = addKeyword(['hola', 'hi', 'menu', 'inicio'])
+    .addAnswer('¡Bienvenid@ al Chatbot 🤖 de MultillantasNieto!', {
         media: welcomeNietoImage
     })
-    .addAnswer('', {
-        buttons: [
-            { body: '🛞 Buscar LLanta' },
-            { body: '👨‍💻 Contizar Llanta(s)' },
-            { body: '📋 Seguimiento de Cotización' }
-        ],
-        capture: true
-    },
-    async (ctx, { gotoFlow, fallBack }) => {
-        const body = ctx.body.trim();
-        if (body === '🛞 Cotizar') {
-            return gotoFlow(nietoFlow);
-        } else if (body === '👨‍💻 Contactar asesor') {
-            return fallBack('Un asesor se pondrá en contacto contigo pronto.');
-        } else if (body === '📋 Más información') {
-            return fallBack('Visita https://multillantasnieto.com para más información.');
-        } else {
-            return fallBack('Por favor, selecciona una opción válida.');
-        }
-    })
+    .addAnswer(
+        [
+            'Selecciona una opción:',
+            `1. ${MENU_OPTIONS.COTIZAR_LLANTA}`,
+            `2. ${MENU_OPTIONS.SEGUIMIENTO_COTIZACION}`,
+            `3. ${MENU_OPTIONS.CONTACTAR_ASESOR}`
+        ].join('\n'),
+        {
+            buttons: [
+                { body: MENU_OPTIONS.COTIZAR_LLANTA },
+                { body: MENU_OPTIONS.SEGUIMIENTO_COTIZACION },
+                { body: MENU_OPTIONS.CONTACTAR_ASESOR }
+            ],
+            capture: true
+        },
+        async (ctx, { gotoFlow, fallBack }) => {
+            const body = ctx.body.trim();
 
-const registerFlow = addKeyword(utils.setEvent('REGISTER_FLOW'))
+            const isMatch = (input, option, number) => {
+                return input === option || input === number;
+            };
+
+            if (isMatch(body, MENU_OPTIONS.COTIZAR_LLANTA, '1')) {
+                return gotoFlow(nietoFlow);
+            } else if (isMatch(body, MENU_OPTIONS.SEGUIMIENTO_COTIZACION, '2')) {
+                return gotoFlow(seguimientoFlow);
+            } else if (isMatch(body, MENU_OPTIONS.CONTACTAR_ASESOR, '3')) {
+                return fallBack('Un asesor se pondrá en contacto contigo pronto. (Funcionalidad en desarrollo)');
+            } else {
+                return fallBack('Por favor, selecciona una opción válida (1, 2 o 3).');
+            }
+        }
+    )
+
+/*const registerFlow = addKeyword(utils.setEvent('REGISTER_FLOW'))
     .addAnswer(`¿Cúal es tu nombre??`, { capture: true }, async (ctx, { state }) => {
         await state.update({ name: ctx.body })
     })
@@ -54,7 +76,7 @@ const registerFlow = addKeyword(utils.setEvent('REGISTER_FLOW'))
     })
     .addAction(async (_, { flowDynamic, state }) => {
         await flowDynamic(`${state.get('name')}, thanks for your information!: Your age: ${state.get('age')}`)
-    })
+    })*/
 
 const fullSamplesFlow = addKeyword(['samples', utils.setEvent('SAMPLES')])
     .addAnswer(`💪 I'll send you a lot files...`)
@@ -68,14 +90,11 @@ const fullSamplesFlow = addKeyword(['samples', utils.setEvent('SAMPLES')])
     })
 
 // --- FLUJO MULTILLANTAS NIETO ---
-const welcomeNietoImage = join(process.cwd(), 'assets', 'nieto_welcome.jpg');
-const tireInfoNietoImage = join(process.cwd(), 'assets', 'nieto_tireinfo.png');
 
-async function getTireInventoryFromAPI(medidas) {
-    // Nueva lógica basada en la función search proporcionada
+
+async function getTireInventoryFromAPI(txt, tipo) {
     const noper = 1;
-    const tipo = 3;
-    const txt = medidas;
+    // tipo: 1=Descripcion, 2=MSPN, 3=Medida
     const url = `https://sys.multillantasnieto.net/ExistenciasAPI/rest/DPChatBot?Noper=${noper}&Txt=${encodeURIComponent(txt)}&Tipo=${tipo}`;
     try {
         const response = await fetch(url);
@@ -84,49 +103,74 @@ async function getTireInventoryFromAPI(medidas) {
         }
         const data = await response.json();
         if (!Array.isArray(data) || data.length === 0) {
-            return 'No se encontraron llantas para esas medidas.';
+            return null;
         }
         // Formatea el inventario para mostrarlo en el bot
         return data.map((item, idx) =>
-            `Opción: ${idx + 1}\nClave: ${item.almcve}\nMarca: ${item.grumar}\nMedida: ${item.almancho} ${item.almserie} ${item.almrin}\nDescripción: ${item.almnom}`
+            `Opción ${idx + 1}:\nClave: ${item.almcve}\nMarca: ${item.grumar}\nMedida: ${item.almancho} ${item.almserie} ${item.almrin}\nDescripción: ${item.almnom}`
         ).join('\n\n');
     } catch (error) {
         console.error('Error consultando la API:', error);
-        return 'Hubo un error consultando el inventario. Intenta más tarde.';
+        return null;
     }
 }
 
 const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
-    .addAnswer('¡Bienvenid@ al Robot 🤖 de MultillantasNieto!', {
-        media: welcomeNietoImage
-    })
-    .addAnswer('Escribe una opción', {
+    .addAnswer('¿Cómo deseas buscar tu llanta?\n\n1. Descripción (Michelin,uniroyal,etc)\n2. MSPN (3953)\n3. Medida (155 70 13)', {
         buttons: [
-            { body: 'Cotizar' },
-            { body: 'Contactar asesor' }
-        ]
-    })
-    .addAnswer(
-        '🚗 Escribe las medidas de tu llanta en formato Ancho/Alto/Rin (ej: 185 60 15)\nO envía una foto donde se vean las medidas.\n👉 ¡Te cotizamos al instante!',
-        { media: tireInfoNietoImage, capture: true },
-        async (ctx, { flowDynamic, gotoFlow }) => {
-            let seguirPreguntando = true;
-            let medidas = ctx.body.trim();
-            while (seguirPreguntando) {
-                const inventoryMsg = await getTireInventoryFromAPI(medidas);
-                if (inventoryMsg.includes('No se encontraron llantas para esas medidas.')) {
-                    await flowDynamic('🚗 No se encontraron llantas para esas medidas. Por favor, ingresa otra medida en formato Ancho/Alto/Rin (ej: 185 60 15):');
-                    // Espera la siguiente respuesta del usuario
-                    return;
-                } else {
-                    await flowDynamic('🚗 Estas son las Marcas y Modelos de llantas que tenemos disponibles en nuestro inventario actual:\n' + inventoryMsg);
-                    await flowDynamic('¿Encontraste la llanta que buscabas? 🕵️‍♂️\n\n✅ Realiza tu pedido al: 442 123 4567\n✅ Compra en nuestra tienda en línea: https://multillantasnieto.com/tienda\n✅ Visita nuestras sucursales: https://multillantasnieto.com/sucursales\nIncluye válvula, montaje, balanceo y nitrógeno (Aplican restricciones)');
-                    await flowDynamic({ buttons: [ { body: 'Sí' }, { body: 'No' } ], body: '¿Quieres generar un PDF de la cotización anterior?' });
-                    seguirPreguntando = false;
-                }
-            }
+            { body: 'Descripción' },
+            { body: 'MSPN' },
+            { body: 'Medida' }
+        ],
+        capture: true
+    }, async (ctx, { state, fallBack }) => {
+        const selection = ctx.body.trim().toLowerCase();
+        const normalize = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        let tipo = null;
+
+        if (selection === '1' || normalize(selection).includes('descripcion')) tipo = 1;
+        else if (selection === '2' || selection.includes('mspn')) tipo = 2;
+        else if (selection === '3' || selection.includes('medida')) tipo = 3;
+
+        if (!tipo) {
+            return fallBack('⚠️ Por favor, selecciona una opción válida (1, 2 o 3).');
         }
-    )
+
+        await state.update({ searchType: tipo });
+    })
+    .addAnswer('✍️ Por favor, ingresa el dato de búsqueda:', { capture: true }, async (ctx, { flowDynamic, state, gotoFlow }) => {
+        const query = ctx.body.trim();
+        const tipo = state.get('searchType');
+
+        await flowDynamic('🔍 Buscando existencias...');
+        const results = await getTireInventoryFromAPI(query, tipo);
+
+        if (!results) {
+            await flowDynamic('❌ No se encontraron llantas con esos datos. Intenta nuevamente.');
+            return gotoFlow(nietoFlow);
+        }
+
+        await flowDynamic('🚗 *Resultados de la búsqueda:*');
+        await flowDynamic(results);
+        await state.update({ searchResults: results });
+    })
+    .addAnswer('¿Deseas cotizar alguna de estas opciones?', {
+        buttons: [
+            { body: 'Sí, cotizar' },
+            { body: 'No, buscar otra' }
+        ],
+        capture: true
+    }, async (ctx, { flowDynamic, gotoFlow }) => {
+        if (ctx.body.includes('Sí') || ctx.body.includes('Si')) {
+            const folio = `COT-${Date.now().toString().slice(-6)}`;
+            await flowDynamic(`✅ *¡Solicitud de Cotización Recibida!*`);
+            await flowDynamic(`📄 Tu folio de seguimiento es: *${folio}*`);
+            await flowDynamic(`🕒 Tu cotización ha sido puesta en lista de espera. Un asesor verificará la disponibilidad y te contactará en breve.`);
+        } else {
+            return gotoFlow(nietoFlow);
+        }
+    })
 
 // --- FLUJO SEGUIMIENTO DE COTIZACIÓN ---
 const seguimientoFlow = addKeyword(['seguimiento', '2'])
@@ -155,10 +199,10 @@ const seguimientoFlow = addKeyword(['seguimiento', '2'])
 
 const main = async () => {
     const adapterFlow = createFlow([welcomeFlow, registerFlow, fullSamplesFlow, nietoFlow, seguimientoFlow])
-    
-    const adapterProvider = createProvider(Provider, 
-		{ version: [2, 3000, 1027934701]} 
-	)
+
+    const adapterProvider = createProvider(Provider,
+        { version: [2, 3000, 1027934701] }
+    )
     const adapterDB = new Database()
 
     const { handleCtx, httpServer } = await createBot({
