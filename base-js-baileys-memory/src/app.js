@@ -21,35 +21,35 @@ const discordFlow = addKeyword('doc').addAnswer(
 )
 
 const welcomeFlow = addKeyword(['hola'])
-    .addAnswer(`🙌 Hola, bienvenido a *Multillantas Nieto*`)
-    .addAnswer(
-        [
-            '¿En qué puedo ayudarte hoy?',
-            'Escribe el número de la opción deseada:',
-            '👉 *1*. Cotización',
-            '👉 *2*. Seguimiento de Cotización',
-            '👉 *3*. Contacto Asesor',
-        ].join('\n'),
-        { delay: 800, capture: true },
-        async (ctx, { gotoFlow, fallBack }) => {
-            const body = ctx.body.trim();
-            if (body === '1') {
-                return gotoFlow(nietoFlow);
-            } else if (body === '2') {
-                return gotoFlow(seguimientoFlow);
-            } else if (body === '3') {
-                return fallBack('Un asesor se pondrá en contacto contigo pronto.');
-            } else {
-                return fallBack('Por favor, selecciona una opción válida (1, 2 o 3).');
-            }
+    .addAnswer('¡Bienvenid@ al Robot 🤖 de MultillantasNieto!', {
+        media: welcomeNietoImage
+    })
+    .addAnswer('', {
+        buttons: [
+            { body: '🛞 Buscar LLanta' },
+            { body: '👨‍💻 Contizar Llanta(s)' },
+            { body: '📋 Seguimiento de Cotización' }
+        ],
+        capture: true
+    },
+    async (ctx, { gotoFlow, fallBack }) => {
+        const body = ctx.body.trim();
+        if (body === '🛞 Cotizar') {
+            return gotoFlow(nietoFlow);
+        } else if (body === '👨‍💻 Contactar asesor') {
+            return fallBack('Un asesor se pondrá en contacto contigo pronto.');
+        } else if (body === '📋 Más información') {
+            return fallBack('Visita https://multillantasnieto.com para más información.');
+        } else {
+            return fallBack('Por favor, selecciona una opción válida.');
         }
-    )
+    })
 
 const registerFlow = addKeyword(utils.setEvent('REGISTER_FLOW'))
-    .addAnswer(`What is your name?`, { capture: true }, async (ctx, { state }) => {
+    .addAnswer(`¿Cúal es tu nombre??`, { capture: true }, async (ctx, { state }) => {
         await state.update({ name: ctx.body })
     })
-    .addAnswer('What is your age?', { capture: true }, async (ctx, { state }) => {
+    .addAnswer('¿Cúal es tu edad??', { capture: true }, async (ctx, { state }) => {
         await state.update({ age: ctx.body })
     })
     .addAction(async (_, { flowDynamic, state }) => {
@@ -72,26 +72,24 @@ const welcomeNietoImage = join(process.cwd(), 'assets', 'nieto_welcome.jpg');
 const tireInfoNietoImage = join(process.cwd(), 'assets', 'nieto_tireinfo.png');
 
 async function getTireInventoryFromAPI(medidas) {
-    const wsdlUrl = 'https://sys.multillantasnieto.net/ExistenciasAPI/com.existencias.asp_chatbot?wsdl';
+    // Nueva lógica basada en la función search proporcionada
+    const noper = 1;
+    const tipo = 3;
+    const txt = medidas;
+    const url = `https://sys.multillantasnieto.net/ExistenciasAPI/rest/DPChatBot?Noper=${noper}&Txt=${encodeURIComponent(txt)}&Tipo=${tipo}`;
     try {
-        const client = await soap.createClientAsync(wsdlUrl);
-        // Parámetros según WSDL
-        const args = {
-            Noper: 1, // Puedes ajustar según tu lógica
-            Txt: medidas, // Medida enviada por el usuario
-            Tipo: 1 // Puedes ajustar según tu lógica
-        };
-        // Llama al método Execute
-        const [result] = await client.ExecuteAsync(args);
-        // Procesa la respuesta
-        const items = result.Sdtexistencias?.SDTExistenciasItem || [];
-        if (items.length === 0) {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Error en la respuesta de la API');
+        }
+        const data = await response.json();
+        if (!Array.isArray(data) || data.length === 0) {
             return 'No se encontraron llantas para esas medidas.';
         }
         // Formatea el inventario para mostrarlo en el bot
-        return items.map((item, idx) =>
-            `Opción: ${idx + 1}\nMarca: ${item.grumar}\nMedida: ${item.almancho}/${item.almserie}R${item.almrin}\nAlmacén: ${item.almnom}`
-        ).join('\n');
+        return data.map((item, idx) =>
+            `Opción: ${idx + 1}\nClave: ${item.almcve}\nMarca: ${item.grumar}\nMedida: ${item.almancho} ${item.almserie} ${item.almrin}\nDescripción: ${item.almnom}`
+        ).join('\n\n');
     } catch (error) {
         console.error('Error consultando la API:', error);
         return 'Hubo un error consultando el inventario. Intenta más tarde.';
@@ -109,7 +107,7 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
         ]
     })
     .addAnswer(
-        '🚗 Escribe las medidas de tu llanta en formato Ancho/Alto/Rin (ej: 185/60R15)\nO envía una foto donde se vean las medidas.\n👉 ¡Te cotizamos al instante!',
+        '🚗 Escribe las medidas de tu llanta en formato Ancho/Alto/Rin (ej: 185 60 15)\nO envía una foto donde se vean las medidas.\n👉 ¡Te cotizamos al instante!',
         { media: tireInfoNietoImage, capture: true },
         async (ctx, { flowDynamic, gotoFlow }) => {
             let seguirPreguntando = true;
@@ -117,7 +115,7 @@ const nietoFlow = addKeyword(['cotizar', 'llanta', 'multillantasnieto'])
             while (seguirPreguntando) {
                 const inventoryMsg = await getTireInventoryFromAPI(medidas);
                 if (inventoryMsg.includes('No se encontraron llantas para esas medidas.')) {
-                    await flowDynamic('🚗 No se encontraron llantas para esas medidas. Por favor, ingresa otra medida en formato Ancho/Alto/Rin (ej: 185/60R15):');
+                    await flowDynamic('🚗 No se encontraron llantas para esas medidas. Por favor, ingresa otra medida en formato Ancho/Alto/Rin (ej: 185 60 15):');
                     // Espera la siguiente respuesta del usuario
                     return;
                 } else {
