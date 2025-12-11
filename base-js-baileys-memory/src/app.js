@@ -98,18 +98,22 @@ const fullSamplesFlow = addKeyword(['samples', utils.setEvent('SAMPLES')])
 async function getTireInventoryFromAPI(txt, tipo) {
     const noper = 1;
     // tipo: 1=Descripcion, 2=MSPN, 3=Medida
-    const url = `https://sys.multillantasnieto.net/ExistenciasAPI/rest/DPChatBot?Noper=${noper}&Txt=${encodeURIComponent(txt)}&Tipo=${tipo}`;
+    const url = `https://sys.multillantasnieto.net/ExistenciasAPI/APIBot/SP_ChatBot?Noper=${noper}&Txt=${encodeURIComponent(txt)}&Tipo=${tipo}`;
     try {
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error('Error en la respuesta de la API');
         }
         const data = await response.json();
-        if (!Array.isArray(data) || data.length === 0) {
+
+        // La API devuelve un objeto con la propiedad "SDTExistencias" que contiene el array
+        const existencias = data?.SDTExistencias;
+
+        if (!Array.isArray(existencias) || existencias.length === 0) {
             return null;
         }
-        // Retorna los datos crudos
-        return data;
+        // Retorna los datos de existencias
+        return existencias;
     } catch (error) {
         console.error('Error consultando la API:', error);
         return null;
